@@ -583,16 +583,25 @@ app.post("/send-whatsapp", async (req, res) => {
         return res.status(400).send({ error: "Missing to or message" });
     }
 
+    const formattedTo = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+
+    console.log("-----------------------------------------");
+    console.log("📞 Fetched Owner Number (TO):", formattedTo);
+    console.log("📡 Twilio Sender Number (FROM):", TWILIO_WHATSAPP_FROM);
+
     try {
         const response = await twilioClient.messages.create({
             from: TWILIO_WHATSAPP_FROM,
-            to: to.startsWith("whatsapp:") ? to : `whatsapp:${to}`,
+            to: formattedTo,
             body: message,
         });
-        console.log("📲 WhatsApp Message sent:", response.sid);
-        res.status(200).send({ success: true, sid: response.sid });
+        console.log("📲 WhatsApp Message Status:", response.status);
+        console.log("🆔 Message SID:", response.sid);
+        console.log("-----------------------------------------");
+        res.status(200).send({ success: true, sid: response.sid, status: response.status });
     } catch (err) {
         console.error("❌ WhatsApp Message failed:", err.message);
+        console.log("-----------------------------------------");
         res.status(500).send({ error: err.message });
     }
 });
