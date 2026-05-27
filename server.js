@@ -5,7 +5,7 @@ const twilio = require("twilio");
 const MessagingResponse = require("twilio").twiml.MessagingResponse;
 require("dotenv").config(); // loads .env file
 
-const serviceAccount = require("./firebase-key.json");
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -97,40 +97,40 @@ function sendOneMessage(res, msg) {
 }
 
 async function uploadToCloudinary(mediaUrl, folder) {
-  try {
-    const twilioResponse = await axios({
-      method: 'get',
-      url: mediaUrl,
-      auth: {
-        username: process.env.TWILIO_ACCOUNT_SID,
-        password: process.env.TWILIO_AUTH_TOKEN
-      },
-      responseType: 'arraybuffer',
-      timeout: 30000
-    });
-    console.log("✅ Downloaded from Twilio");
-    
-    const base64 = Buffer.from(twilioResponse.data).toString('base64');
-    
-    const FormData = require('form-data');
-    const form = new FormData();
-    form.append('file', `data:image/jpeg;base64,${base64}`);
-    form.append('upload_preset', 'clothing_shop_preset');
-    form.append('folder', folder);
-    
-    const result = await axios.post(
-      'https://api.cloudinary.com/v1_1/dlqgwikp9/image/upload',
-      form,
-      { headers: form.getHeaders(), timeout: 60000 }
-    );
-    
-    console.log("✅ Cloudinary URL:", result.data.secure_url);
-    return result.data.secure_url;
-    
-  } catch (err) {
-    console.error("❌ Upload error:", err.message);
-    return null;
-  }
+    try {
+        const twilioResponse = await axios({
+            method: 'get',
+            url: mediaUrl,
+            auth: {
+                username: process.env.TWILIO_ACCOUNT_SID,
+                password: process.env.TWILIO_AUTH_TOKEN
+            },
+            responseType: 'arraybuffer',
+            timeout: 30000
+        });
+        console.log("✅ Downloaded from Twilio");
+
+        const base64 = Buffer.from(twilioResponse.data).toString('base64');
+
+        const FormData = require('form-data');
+        const form = new FormData();
+        form.append('file', `data:image/jpeg;base64,${base64}`);
+        form.append('upload_preset', 'clothing_shop_preset');
+        form.append('folder', folder);
+
+        const result = await axios.post(
+            'https://api.cloudinary.com/v1_1/dlqgwikp9/image/upload',
+            form,
+            { headers: form.getHeaders(), timeout: 60000 }
+        );
+
+        console.log("✅ Cloudinary URL:", result.data.secure_url);
+        return result.data.secure_url;
+
+    } catch (err) {
+        console.error("❌ Upload error:", err.message);
+        return null;
+    }
 }
 
 // ================= GEOCODING (OSM Nominatim) =================
@@ -225,7 +225,7 @@ app.post("/whatsapp", async (req, res) => {
         // 1. Check conversation state FIRST (CRITICAL BUG FIX)
         if (state.step) {
             console.log(`📍 Continuing flow for step: ${state.step}`);
-            
+
             // --- MY SHOPS SELECT ---
             if (state.step === "MYSHOPS_SELECT") {
                 const num = parseInt(msg);
@@ -288,9 +288,9 @@ app.post("/whatsapp", async (req, res) => {
                 } else {
                     return sendOneMessage(res, "⚠️ Send image or type SKIP");
                 }
-                
+
                 const shopId = state.data.shopName.replace(/\s+/g, "_") + "_" + Date.now();
-                
+
                 // Bug 1 Fix: Explicitly set fields to ensure status saves
                 await db.collection("shops").doc(shopId).set({
                     shopName: state.data.shopName,
@@ -313,22 +313,22 @@ app.post("/whatsapp", async (req, res) => {
                 state.shopId = shopId;
                 state.step = null;
                 return sendOneMessage(res,
-                  `⏳ *Registration Received!*\n\n` +
-                  `Your shop *${state.data.shopName}* is under review.\n\n` +
-                  `Admin will approve within 24 hours.\n` +
-                  `You will be notified once approved!`
+                    `⏳ *Registration Received!*\n\n` +
+                    `Your shop *${state.data.shopName}* is under review.\n\n` +
+                    `Admin will approve within 24 hours.\n` +
+                    `You will be notified once approved!`
                 );
             }
 
             // --- ADD PRODUCT STEPS ---
             if (state.step.startsWith("P_")) {
                 if (state.data && state.data.status === "pending") {
-                  state.step = null;
-                  return sendOneMessage(res,
-                    `⏳ *Shop Pending Approval*\n\n` +
-                    `Your shop is still under review.\n` +
-                    `You cannot add products until approved.`
-                  );
+                    state.step = null;
+                    return sendOneMessage(res,
+                        `⏳ *Shop Pending Approval*\n\n` +
+                        `Your shop is still under review.\n` +
+                        `You cannot add products until approved.`
+                    );
                 }
 
                 if (state.step === "P_NAME") {
@@ -364,7 +364,7 @@ app.post("/whatsapp", async (req, res) => {
                     } else {
                         return sendOneMessage(res, "⚠️ Send image or type SKIP");
                     }
-                    
+
                     await db.collection("shops").doc(state.shopId).collection("products").add({
                         ...state.product,
                         price: Number(state.product.price),
@@ -417,7 +417,7 @@ app.post("/whatsapp", async (req, res) => {
                 } else if (state.updateField === "price" || state.updateField === "stock") {
                     updateData[state.updateField] = Number(msg);
                 } else updateData[state.updateField] = msg;
-                
+
                 await db.collection("shops").doc(state.shopId).collection("products").doc(state.updateProductId).update(updateData);
                 state.step = null;
                 return sendTwoMessages(res, from, getSuccess(`Product *${state.updateProductName}* updated!`), getMenu());
@@ -597,7 +597,7 @@ app.get("/api/notifications/debug-time", (req, res) => {
     const istOffset = 5.5 * 60 * 60 * 1000;
     const istTime = new Date(now.getTime() + istOffset);
     const istHour = istTime.getUTCHours();
-    
+
     const debugData = {
         serverTime: now.toString(),
         utcHour: now.getUTCHours(),
@@ -605,7 +605,7 @@ app.get("/api/notifications/debug-time", (req, res) => {
         istFullTime: istTime.toUTCString().replace("GMT", "IST"),
         isQuietHours: (istHour >= 22 || istHour < 8)
     };
-    
+
     console.log("🕒 DEBUG TIME REQUEST:", debugData);
     res.status(200).send(debugData);
 });
@@ -615,7 +615,7 @@ app.get("/api/notifications/test-cart-reminder", async (req, res) => {
     try {
         const bypass = req.query.bypass === 'true';
         const result = await runAbandonedCartReminders(bypass);
-        
+
         console.log("-----------------------------------------");
         console.log("🧪 TEST ENDPOINT: Cart Reminder Job");
         console.log(`⏰ Current IST Time: ${result.istTime}`);
@@ -641,10 +641,10 @@ app.get("/api/admin/migrate-images", async (req, res) => {
 
         // 1. Fetch all shops
         const shopsSnap = await db.collection("shops").get();
-        
+
         for (const shopDoc of shopsSnap.docs) {
             const shopData = shopDoc.data();
-            
+
             // Check Shop Image
             let shopImage = shopData.image || shopData.imageUrl || shopData.shopImageUrl;
             if (shopImage && (shopImage.includes("twilio.com") || shopImage.includes("fbsbx.com"))) {
@@ -689,7 +689,7 @@ app.get("/api/admin/migrate-images", async (req, res) => {
                         skippedCount++;
                     }
                 }
-                
+
                 // Handle single 'image' field
                 let pImage = pData.image || pData.imageUrl;
                 if (pImage && (pImage.includes("twilio.com") || pImage.includes("fbsbx.com"))) {
