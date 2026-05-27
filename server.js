@@ -4,7 +4,6 @@ const admin = require("firebase-admin");
 const twilio = require("twilio");
 const MessagingResponse = require("twilio").twiml.MessagingResponse;
 require("dotenv").config(); // loads .env file
-const admin = require("firebase-admin");
 
 const serviceAccount = JSON.parse(
     process.env.FIREBASE_SERVICE_ACCOUNT
@@ -18,10 +17,7 @@ admin.initializeApp({
     storageBucket: "clothing-shop-app-15214.firebasestorage.app",
 });
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    storageBucket: "clothing-shop-app-15214.firebasestorage.app",
-});
+
 
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
