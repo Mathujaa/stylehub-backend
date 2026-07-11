@@ -635,16 +635,24 @@ app.post("/send-whatsapp", async (req, res) => {
         return res.status(400).send({ error: "Missing to or message" });
     }
 
+    // Ignore the legacy approval message sent by the Flutter app.
+    // The Firebase Cloud Function 'sendApprovalNotification' now handles this properly.
+    if (message.includes("has been approved on StyleHub") && message.includes("Congratulations")) {
+        console.log("🛑 Ignoring legacy approval message from Flutter app.");
+        return res.status(200).send({ success: true, status: "ignored_legacy_approval" });
+    }
+
     const formattedTo = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+    const formattedFrom = TWILIO_WHATSAPP_FROM.startsWith("whatsapp:") ? TWILIO_WHATSAPP_FROM : `whatsapp:${TWILIO_WHATSAPP_FROM}`;
 
     try {
         const response = await twilioClient.messages.create({
-            from: TWILIO_WHATSAPP_FROM,
+            from: formattedFrom,
             to: formattedTo,
             body: message,
         });
         console.log("📞 TO:", formattedTo);
-        console.log("📡 FROM:", TWILIO_WHATSAPP_FROM);
+        console.log("📡 FROM:", formattedFrom);
         console.log("📲 Status:", response.status);
         res.status(200).send({ success: true, sid: response.sid, status: response.status });
     } catch (err) {
