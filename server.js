@@ -44,6 +44,43 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
+// ================= DEBUG ENDPOINTS (TEMPORARY) =================
+
+app.get("/check-sa", (req, res) => {
+  try {
+    const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+    res.json({
+      project_id: sa.project_id,
+      client_email: sa.client_email,
+      hasPrivateKey: !!sa.private_key,
+      privateKeyStartsWith: sa.private_key.substring(0, 30)
+    });
+  } catch (e) {
+    res.status(500).json({
+      error: e.message
+    });
+  }
+});
+
+app.get("/test-firestore", async (req, res) => {
+  try {
+    const snap = await admin.firestore().collection("shops").limit(1).get();
+
+    res.json({
+      success: true,
+      count: snap.size
+    });
+  } catch (e) {
+    console.error(e);
+
+    res.status(500).json({
+      success: false,
+      error: e.message
+    });
+  }
+});
+
 // ================= KEYWORD MATCHER =================
 function matchesKeyword(text, keywords) {
     const t = text.toLowerCase().trim();
@@ -197,6 +234,9 @@ async function restoreState(from) {
         if (shops.length > 0) {
             const latest = shops[0];
             userState[from].shopId = latest.id;
+            // Admin panel writes approvalStatus: 'approved' (not the status field).
+            // Prefer approvalStatus; fall back to status; default approved for legacy shops.
+            const effectiveStatus = latest.approvalStatus || latest.status || "approved";
             userState[from].data = {
                 shopName: latest.shopName,
                 owner: latest.owner,
@@ -204,9 +244,10 @@ async function restoreState(from) {
                 location: latest.location,
                 category: latest.category,
                 image: latest.image || null,
-                status: latest.status || "approved", // Default to approved for legacy
+                status: effectiveStatus,
+                approvalStatus: effectiveStatus,
             };
-            console.log(`🔄 Restored state for ${from} → Shop: ${latest.shopName}`);
+            console.log(`🔄 Restored state for ${from} → Shop: ${latest.shopName} (status: ${effectiveStatus})`);
         }
     } catch (err) {
         console.error("⚠️ Could not restore state:", err.message);
@@ -298,10 +339,12 @@ app.post("/whatsapp", async (req, res) => {
 
                 const shopId = state.data.shopName.replace(/\s+/g, "_") + "_" + Date.now();
 
-                // Bug 1 Fix: Explicitly set fields to ensure status saves
+                // Save shop with approvalStatus so admin panel can query it
                 await db.collection("shops").doc(shopId).set({
                     shopName: state.data.shopName,
                     owner: state.data.owner,
+                    ownerName: state.data.owner,   // alias used by admin screen
+                    ownerPhone: state.data.phone,  // alias used by admin screen
                     phone: state.data.phone,
                     location: state.data.location,
                     category: state.data.category,
@@ -311,10 +354,12 @@ app.post("/whatsapp", async (req, res) => {
                     ownerWhatsapp: from,
                     createdAt: new Date(),
                     status: "pending",
+                    approvalStatus: "pending",   // field the admin screen queries (.where 'approvalStatus')
                     submittedAt: new Date(),
                     reviewedAt: null,
                     rejectionReason: null,
                     isVerified: false,
+                    verified: false,
                 });
 
                 state.shopId = shopId;
@@ -329,7 +374,14 @@ app.post("/whatsapp", async (req, res) => {
 
             // --- ADD PRODUCT STEPS ---
             if (state.step.startsWith("P_")) {
-                if (state.data && state.data.status === "pending") {
+                // Block product addition if shop is not yet approved.
+                // Check both approvalStatus (written by admin panel) and status (legacy field).
+                const shopPending =
+                    state.data &&
+                    (state.data.approvalStatus === "pending" || state.data.status === "pending") &&
+                    state.data.approvalStatus !== "approved" &&
+                    state.data.status !== "approved";
+                if (shopPending) {
                     state.step = null;
                     return sendOneMessage(res,
                         `⏳ *Shop Pending Approval*\n\n` +
